@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Email Open Tracker</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+  .login-container { display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+  .login-box { background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); width: 320px; }
+  .login-box h1 { font-size: 1.3rem; margin-bottom: 1rem; }
+  .login-box input { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 0.75rem; font-size: 0.9rem; }
+  .login-box button { width: 100%; padding: 0.5rem; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+  .login-box button:hover { background: #1d4ed8; }
+  .login-error { color: #dc2626; font-size: 0.85rem; margin-bottom: 0.5rem; display: none; }
+
+  .dashboard { max-width: 960px; margin: 0 auto; padding: 1.5rem; display: none; }
+  .stats-bar { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
+  .stat-card { flex: 1; background: #fff; padding: 1rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); text-align: center; }
+  .stat-card .value { font-size: 1.8rem; font-weight: 700; color: #2563eb; }
+  .stat-card .label { font-size: 0.8rem; color: #666; margin-top: 0.25rem; }
+
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  th { background: #f8fafc; text-align: left; padding: 0.75rem; font-size: 0.8rem; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { padding: 0.75rem; border-top: 1px solid #eee; font-size: 0.9rem; }
+  tr.email-row { cursor: pointer; }
+  tr.email-row:hover { background: #f8fafc; }
+  .opens-count { background: #dbeafe; color: #2563eb; padding: 0.15rem 0.5rem; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
+  .opens-count.zero { background: #f3f4f6; color: #999; }
+  .detail-row { display: none; }
+  .detail-row td { padding: 0; }
+  .detail-table { width: 100%; margin: 0; box-shadow: none; border-radius: 0; }
+  .detail-table td { padding: 0.5rem 0.75rem; background: #f8fafc; font-size: 0.82rem; color: #555; }
+  .no-data { text-align: center; padding: 2rem; color: #999; }
+  .refresh-note { text-align: center; font-size: 0.75rem; color: #999; margin-top: 1rem; }
+
+  .settings-section { margin-top: 1.5rem; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 1rem; }
+  .settings-section h2 { font-size: 1rem; margin-bottom: 0.75rem; }
+  .ip-form { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+  .ip-form input { padding: 0.4rem 0.6rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; }
+  .ip-form input:first-child { width: 160px; }
+  .ip-form input:nth-child(2) { flex: 1; }
+  .ip-form button, .btn-sm { padding: 0.4rem 0.75rem; border: none; border-radius: 4px; cursor: pointer; font-size: 0.82rem; }
+  .btn-add { background: #2563eb; color: #fff; }
+  .btn-add:hover { background: #1d4ed8; }
+  .btn-myip { background: #f3f4f6; color: #333; }
+  .btn-myip:hover { background: #e5e7eb; }
+  .btn-remove { background: none; color: #dc2626; cursor: pointer; border: none; font-size: 0.82rem; }
+  .btn-remove:hover { text-decoration: underline; }
+  .ip-list { font-size: 0.85rem; }
+  .ip-list .ip-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.35rem 0; border-bottom: 1px solid #f3f4f6; }
+  .ip-list .ip-addr { font-family: monospace; }
+  .ip-list .ip-label { color: #888; flex: 1; }
+</style>
+</head>
+<body>
+
+<div class="login-container" id="loginView">
+  <div class="login-box">
+    <h1>Email Tracker</h1>
+    <div class="login-error" id="loginError">Invalid password</div>
+    <input type="password" id="passwordInput" placeholder="Dashboard password" autofocus>
+    <button onclick="doLogin()">Login</button>
+  </div>
+</div>
+
+<div class="dashboard" id="dashboardView">
+  <h1 style="margin-bottom:1rem;">Email Open Tracker</h1>
+  <div class="stats-bar" id="statsBar"></div>
+  <div id="emailTable"></div>
+  <div class="refresh-note">Auto-refreshes every 30s</div>
+  <div class="settings-section">
+    <h2>Excluded IPs</h2>
+    <p style="font-size:0.82rem;color:#888;margin-bottom:0.75rem;">Opens from these IPs are ignored (use this to filter out your own views).</p>
+    <div class="ip-form">
+      <input type="text" id="newIp" placeholder="IP address">
+      <input type="text" id="newIpLabel" placeholder="Label (optional)">
+      <button class="btn-sm btn-add" onclick="addIp()">Add</button>
+      <button class="btn-sm btn-myip" onclick="addMyIp()">Add My IP</button>
+    </div>
+    <div class="ip-list" id="ipList"></div>
+  </div>
+</div>
+
+<script>
+let password = sessionStorage.getItem('tracker_pw') || '';
+
+async function api(endpoint) {
+  const res = await fetch(endpoint, { headers: { 'x-dashboard-password': password } });
+  if (res.status === 401) { logout(); throw new Error('Unauthorized'); }
+  return res.json();
+}
+
+function logout() {
+  sessionStorage.removeItem('tracker_pw');
+  password = '';
+  document.getElementById('dashboardView').style.display = 'none';
+  document.getElementById('loginView').style.display = 'flex';
+}
+
+async function doLogin() {
+  password = document.getElementById('passwordInput').value;
+  try {
+    await api('/api/emails');
+    sessionStorage.setItem('tracker_pw', password);
+    document.getElementById('loginView').style.display = 'none';
+    document.getElementById('dashboardView').style.display = 'block';
+    loadData();
+    loadExcludedIps();
+  } catch {
+    document.getElementById('loginError').style.display = 'block';
+    password = '';
+  }
+}
+
+document.getElementById('passwordInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d + 'Z').toLocaleString();
+}
+
+async function loadData() {
+  try {
+    const { emails, stats } = await api('/api/emails');
+    document.getElementById('statsBar').innerHTML = `
+      <div class="stat-card"><div class="value">${stats.totalEmails}</div><div class="label">Tracked Emails</div></div>
+      <div class="stat-card"><div class="value">${stats.totalOpens}</div><div class="label">Total Opens</div></div>
+      <div class="stat-card"><div class="value">${stats.openRate}%</div><div class="label">Open Rate</div></div>
+    `;
+
+    if (emails.length === 0) {
+      document.getElementById('emailTable').innerHTML = '<div class="no-data">No tracked emails yet</div>';
+      return;
+    }
+
+    let html = '<table><thead><tr><th>Subject</th><th>Recipient</th><th>Sent</th><th>Opens</th><th>Last Opened</th></tr></thead><tbody>';
+    emails.forEach((email, i) => {
+      const lastOpen = email.opens.length > 0 ? formatDate(email.opens[0].opened_at) : '—';
+      const countClass = email.opens.length === 0 ? 'opens-count zero' : 'opens-count';
+      html += `<tr class="email-row" onclick="toggleDetail(${i})">
+        <td>${esc(email.subject)}</td>
+        <td>${esc(email.recipient)}</td>
+        <td>${formatDate(email.created_at)}</td>
+        <td><span class="${countClass}">${email.opens.length}</span></td>
+        <td>${lastOpen}</td>
+      </tr>`;
+      html += `<tr class="detail-row" id="detail-${i}"><td colspan="5">`;
+      if (email.opens.length > 0) {
+        html += '<table class="detail-table"><tbody>';
+        email.opens.forEach(o => {
+          html += `<tr><td>${formatDate(o.opened_at)}</td><td>${esc(o.ip)}</td><td>${esc(o.client)}</td></tr>`;
+        });
+        html += '</tbody></table>';
+      }
+      html += '</td></tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('emailTable').innerHTML = html;
+  } catch (err) {
+    console.error('Failed to load data', err);
+  }
+}
+
+function toggleDetail(i) {
+  const row = document.getElementById('detail-' + i);
+  row.style.display = row.style.display === 'table-row' ? 'none' : 'table-row';
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// Excluded IPs
+async function loadExcludedIps() {
+  try {
+    const { ips } = await api('/api/excluded-ips');
+    const list = document.getElementById('ipList');
+    if (ips.length === 0) {
+      list.innerHTML = '<div style="color:#999;padding:0.35rem 0;">No excluded IPs</div>';
+      return;
+    }
+    list.innerHTML = ips.map(e =>
+      `<div class="ip-row"><span class="ip-addr">${esc(e.ip)}</span><span class="ip-label">${esc(e.label)}</span><button class="btn-remove" onclick="removeIp('${esc(e.ip)}')">remove</button></div>`
+    ).join('');
+  } catch (err) {
+    console.error('Failed to load excluded IPs', err);
+  }
+}
+
+async function addIp() {
+  const ip = document.getElementById('newIp').value.trim();
+  if (!ip) return;
+  const label = document.getElementById('newIpLabel').value.trim();
+  await fetch('/api/excluded-ips', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-dashboard-password': password },
+    body: JSON.stringify({ ip, label })
+  });
+  document.getElementById('newIp').value = '';
+  document.getElementById('newIpLabel').value = '';
+  loadExcludedIps();
+}
+
+async function addMyIp() {
+  const { ip } = await api('/api/my-ip');
+  document.getElementById('newIp').value = ip;
+  document.getElementById('newIpLabel').value = 'My IP';
+}
+
+async function removeIp(ip) {
+  await fetch('/api/excluded-ips', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', 'x-dashboard-password': password },
+    body: JSON.stringify({ ip })
+  });
+  loadExcludedIps();
+}
+
+// Auto-refresh
+setInterval(loadData, 30000);
+
+// Check if already logged in
+if (password) {
+  api('/api/emails').then(() => {
+    document.getElementById('loginView').style.display = 'none';
+    document.getElementById('dashboardView').style.display = 'block';
+    loadData();
+    loadExcludedIps();
+  }).catch(() => {
+    sessionStorage.removeItem('tracker_pw');
+    password = '';
+  });
+}
+</script>
+</body>
+</html>
