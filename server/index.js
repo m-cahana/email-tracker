@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
-const { initDb, registerEmail, logOpen, getAllEmails, getStats, getExcludedIps, addExcludedIp, removeExcludedIp } = require('./db');
+const { initDb, registerEmail, logOpen, getAllEmails, getStats, getExcludedIps, addExcludedIp, removeExcludedIp, getEmailStatuses } = require('./db');
 const { parseEmailClient } = require('./ua-parser');
 
 const PORT = process.env.PORT || 3000;
@@ -93,6 +93,11 @@ app.get('/api/emails', checkPassword, (req, res) => {
   }));
   const stats = getStats();
   res.json({ emails, stats });
+});
+
+// Lightweight status endpoint for extension polling
+app.get('/api/status', checkPassword, (req, res) => {
+  res.json({ emails: getEmailStatuses() });
 });
 
 // Excluded IPs

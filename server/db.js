@@ -92,4 +92,15 @@ function removeExcludedIp(ip) {
   db.prepare('DELETE FROM excluded_ips WHERE ip = ?').run(ip);
 }
 
-module.exports = { initDb, registerEmail, logOpen, getAllEmails, getStats, getExcludedIps, addExcludedIp, removeExcludedIp };
+function getEmailStatuses() {
+  return db.prepare(`
+    SELECT e.id, e.subject, e.recipient,
+      CASE WHEN COUNT(o.id) > 0 THEN 1 ELSE 0 END as opened
+    FROM emails e
+    LEFT JOIN opens o ON o.email_id = e.id
+    GROUP BY e.id
+    ORDER BY e.created_at DESC
+  `).all();
+}
+
+module.exports = { initDb, registerEmail, logOpen, getAllEmails, getStats, getExcludedIps, addExcludedIp, removeExcludedIp, getEmailStatuses };
