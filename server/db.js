@@ -30,6 +30,12 @@ function initDb(dbPath = ':memory:') {
       label TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS excluded_emails (
+      email TEXT PRIMARY KEY,
+      label TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   return db;
@@ -45,8 +51,18 @@ function isExcludedIp(ip) {
   return !!row;
 }
 
+function isExcludedEmail(emailId) {
+  const row = db.prepare(`
+    SELECT 1 FROM excluded_emails e
+    JOIN emails em ON LOWER(em.recipient) = LOWER(e.email)
+    WHERE em.id = ?
+  `).get(emailId);
+  return !!row;
+}
+
 function logOpen(emailId, ip, userAgent) {
   if (isExcludedIp(ip)) return false;
+  if (isExcludedEmail(emailId)) return false;
   const stmt = db.prepare('INSERT INTO opens (email_id, ip, user_agent) VALUES (?, ?, ?)');
   stmt.run(emailId, ip, userAgent);
   return true;
@@ -92,6 +108,18 @@ function removeExcludedIp(ip) {
   db.prepare('DELETE FROM excluded_ips WHERE ip = ?').run(ip);
 }
 
+function getExcludedEmails() {
+  return db.prepare('SELECT * FROM excluded_emails ORDER BY created_at DESC').all();
+}
+
+function addExcludedEmail(email, label) {
+  db.prepare('INSERT OR IGNORE INTO excluded_emails (email, label) VALUES (?, ?)').run(email.toLowerCase(), label || '');
+}
+
+function removeExcludedEmail(email) {
+  db.prepare('DELETE FROM excluded_emails WHERE email = ?').run(email.toLowerCase());
+}
+
 function getEmailStatuses() {
   return db.prepare(`
     SELECT e.id, e.subject, e.recipient, e.created_at,
@@ -103,4 +131,4 @@ function getEmailStatuses() {
   `).all();
 }
 
-module.exports = { initDb, registerEmail, logOpen, getAllEmails, getStats, getExcludedIps, addExcludedIp, removeExcludedIp, getEmailStatuses };
+module.exports = { initDb, registerEmail, logOpen, getAllEmails, getStats, getExcludedIps, addExcludedIp, removeExcludedIp, getExcludedEmails, addExcludedEmail, removeExcludedEmail, getEmailStatuses };

@@ -81,6 +81,16 @@
     </div>
     <div class="ip-list" id="ipList"></div>
   </div>
+  <div class="settings-section">
+    <h2>Excluded Emails</h2>
+    <p style="font-size:0.82rem;color:#888;margin-bottom:0.75rem;">Opens on emails sent to these addresses are ignored (use this to filter out your own views via Gmail proxy).</p>
+    <div class="ip-form">
+      <input type="email" id="newEmail" placeholder="Email address" style="width:240px;">
+      <input type="text" id="newEmailLabel" placeholder="Label (optional)">
+      <button class="btn-sm btn-add" onclick="addEmail()">Add</button>
+    </div>
+    <div class="ip-list" id="emailList"></div>
+  </div>
 </div>
 
 <script>
@@ -108,6 +118,7 @@ async function doLogin() {
     document.getElementById('dashboardView').style.display = 'block';
     loadData();
     loadExcludedIps();
+    loadExcludedEmails();
   } catch {
     document.getElementById('loginError').style.display = 'block';
     password = '';
@@ -223,6 +234,46 @@ async function removeIp(ip) {
   loadExcludedIps();
 }
 
+// Excluded Emails
+async function loadExcludedEmails() {
+  try {
+    const { emails } = await api('/api/excluded-emails');
+    const list = document.getElementById('emailList');
+    if (emails.length === 0) {
+      list.innerHTML = '<div style="color:#999;padding:0.35rem 0;">No excluded emails</div>';
+      return;
+    }
+    list.innerHTML = emails.map(e =>
+      `<div class="ip-row"><span class="ip-addr">${esc(e.email)}</span><span class="ip-label">${esc(e.label)}</span><button class="btn-remove" onclick="removeEmail('${esc(e.email)}')">remove</button></div>`
+    ).join('');
+  } catch (err) {
+    console.error('Failed to load excluded emails', err);
+  }
+}
+
+async function addEmail() {
+  const email = document.getElementById('newEmail').value.trim();
+  if (!email) return;
+  const label = document.getElementById('newEmailLabel').value.trim();
+  await fetch('/api/excluded-emails', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-dashboard-password': password },
+    body: JSON.stringify({ email, label })
+  });
+  document.getElementById('newEmail').value = '';
+  document.getElementById('newEmailLabel').value = '';
+  loadExcludedEmails();
+}
+
+async function removeEmail(email) {
+  await fetch('/api/excluded-emails', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', 'x-dashboard-password': password },
+    body: JSON.stringify({ email })
+  });
+  loadExcludedEmails();
+}
+
 // Auto-refresh
 setInterval(loadData, 30000);
 
@@ -233,6 +284,7 @@ if (password) {
     document.getElementById('dashboardView').style.display = 'block';
     loadData();
     loadExcludedIps();
+    loadExcludedEmails();
   }).catch(() => {
     sessionStorage.removeItem('tracker_pw');
     password = '';

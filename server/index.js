@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
-const { initDb, registerEmail, logOpen, getAllEmails, getStats, getExcludedIps, addExcludedIp, removeExcludedIp, getEmailStatuses } = require('./db');
+const { initDb, registerEmail, logOpen, getAllEmails, getStats, getExcludedIps, addExcludedIp, removeExcludedIp, getExcludedEmails, addExcludedEmail, removeExcludedEmail, getEmailStatuses } = require('./db');
 const { parseEmailClient } = require('./ua-parser');
 
 const PORT = process.env.PORT || 3000;
@@ -116,6 +116,25 @@ app.delete('/api/excluded-ips', checkPassword, (req, res) => {
   const { ip } = req.body;
   if (!ip) return res.status(400).json({ error: 'Missing required field: ip' });
   removeExcludedIp(ip.trim());
+  res.json({ success: true });
+});
+
+// Excluded Emails
+app.get('/api/excluded-emails', checkPassword, (req, res) => {
+  res.json({ emails: getExcludedEmails() });
+});
+
+app.post('/api/excluded-emails', checkPassword, (req, res) => {
+  const { email, label } = req.body;
+  if (!email) return res.status(400).json({ error: 'Missing required field: email' });
+  addExcludedEmail(email.trim(), label || '');
+  res.json({ success: true });
+});
+
+app.delete('/api/excluded-emails', checkPassword, (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Missing required field: email' });
+  removeExcludedEmail(email.trim());
   res.json({ success: true });
 });
 
