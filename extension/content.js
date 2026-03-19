@@ -1,7 +1,7 @@
 (() => {
   let config = { serverUrl: '', password: '', enabled: false };
   const instrumented = new WeakSet();
-  let trackedEmails = new Map(); // key: "subject||recipient" -> { id, opened }
+  let trackedEmails = new Map(); // key: "subject||recipient" -> Array<{ id, opened, created_at }>
 
   chrome.storage.sync.get(['serverUrl', 'password', 'enabled'], (result) => {
     config = { serverUrl: result.serverUrl || '', password: result.password || '', enabled: !!result.enabled };
@@ -71,7 +71,8 @@
 
     // Update local state immediately (show single checkmark)
     const key = makeKey(subject, recipient);
-    trackedEmails.set(key, { id: emailId, opened: false });
+    if (!trackedEmails.has(key)) trackedEmails.set(key, []);
+    trackedEmails.get(key).push({ id: emailId, opened: false, created_at: new Date().toISOString() });
     debouncedScan();
   }
 
@@ -87,7 +88,8 @@
   // --- Status tracking ---
 
   function makeKey(subject, recipient) {
-    return (subject || '').toLowerCase().trim() + '||' + (recipient || '').toLowerCase().trim();
+    const normalizedSubject = (subject || '').replace(/^(Re:\s*)+/i, '').toLowerCase().trim();
+    return normalizedSubject + '||' + (recipient || '').toLowerCase().trim();
   }
 
   async function fetchStatuses() {
@@ -102,7 +104,12 @@
       trackedEmails.clear();
       for (const e of emails) {
         const key = makeKey(e.subject, e.recipient);
-        trackedEmails.set(key, { id: e.id, opened: !!e.opened });
+        if (!trackedEmails.has(key)) trackedEmails.set(key, []);
+        trackedEmails.get(key).push({ id: e.id, opened: !!e.opened, created_at: e.created_at });
+      }
+      // Sort each array by created_at ascending
+      for (const arr of trackedEmails.values()) {
+        arr.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
       }
       debouncedScan();
     } catch (err) {
@@ -148,14 +155,15 @@
       if (emailEl) recipient = emailEl.getAttribute('email');
 
       const key = makeKey(subject, recipient);
-      const status = trackedEmails.get(key);
+      const statuses = trackedEmails.get(key);
 
       // Find or create indicator container
       const subjectCell = subjectSpan.closest('.xY, .a4W') || subjectSpan.parentElement;
       let indicator = row.querySelector('[data-email-tracker]');
 
-      if (status) {
-        const desiredState = status.opened ? 'opened' : 'tracked';
+      if (statuses && statuses.length > 0) {
+        const anyOpened = statuses.some(s => s.opened);
+        const desiredState = anyOpened ? 'opened' : 'tracked';
         if (indicator && indicator.dataset.emailTrackerState === desiredState) continue;
 
         if (!indicator) {
@@ -165,9 +173,89 @@
           subjectCell.insertBefore(indicator, subjectCell.firstChild);
         }
         indicator.dataset.emailTrackerState = desiredState;
-        indicator.innerHTML = getCheckmarkSVG(status.opened);
+        indicator.innerHTML = getCheckmarkSVG(anyOpened);
       } else if (indicator) {
         indicator.remove();
+      }
+    }
+  }
+
+  function getUserEmail() {
+    const accountLink = document.querySelector('a[aria-label*="Google Account"]');
+    if (accountLink) {
+      const match = accountLink.getAttribute('aria-label')?.match(/[\w.+-]+@[\w.-]+/);
+      if (match) return match[0].toLowerCase();
+    }
+    const dataEmail = document.querySelector('[data-email]');
+    if (dataEmail) return dataEmail.getAttribute('data-email').toLowerCase();
+    return null;
+  }
+
+  function scanConversationView() {
+    if (trackedEmails.size === 0) return;
+
+    const subjectEl = document.querySelector('h2.hP');
+    if (!subjectEl) return; // not in conversation view
+
+    const threadSubject = subjectEl.textContent.trim();
+    const userEmail = getUserEmail();
+    if (!userEmail) return;
+
+    const messages = document.querySelectorAll('div[data-message-id]');
+    if (messages.length === 0) return;
+
+    // Group user-sent messages by recipient
+    const recipientGroups = new Map(); // recipient -> [{msgEl, index}]
+    let msgIndex = 0;
+    for (const msgEl of messages) {
+      const senderEl = msgEl.querySelector('span[email]');
+      if (!senderEl) { msgIndex++; continue; }
+      const senderEmail = senderEl.getAttribute('email').toLowerCase();
+      if (senderEmail !== userEmail) { msgIndex++; continue; }
+
+      // Find recipient — look for "to" span emails that aren't the sender
+      let recipient = '';
+      const allEmailSpans = msgEl.querySelectorAll('span[email]');
+      for (const span of allEmailSpans) {
+        const email = span.getAttribute('email').toLowerCase();
+        if (email !== userEmail) { recipient = email; break; }
+      }
+
+      if (!recipient) { msgIndex++; continue; }
+
+      if (!recipientGroups.has(recipient)) recipientGroups.set(recipient, []);
+      recipientGroups.get(recipient).push({ msgEl, index: msgIndex });
+      msgIndex++;
+    }
+
+    // For each recipient group, match against tracked emails
+    for (const [recipient, group] of recipientGroups) {
+      const key = makeKey(threadSubject, recipient);
+      const tracked = trackedEmails.get(key);
+      if (!tracked || tracked.length === 0) continue;
+
+      // Match 1-to-1 by chronological order
+      for (let i = 0; i < group.length && i < tracked.length; i++) {
+        const { msgEl } = group[i];
+        const status = tracked[i];
+
+        // Find the message header area to inject indicator
+        const headerEl = msgEl.querySelector('.gE, .gD, .go') || msgEl.querySelector('h3') || msgEl.firstElementChild;
+        if (!headerEl) continue;
+
+        let indicator = msgEl.querySelector('[data-email-tracker-msg]');
+        const desiredState = status.opened ? 'opened' : 'tracked';
+
+        if (indicator && indicator.dataset.emailTrackerMsgState === desiredState) continue;
+
+        if (!indicator) {
+          indicator = document.createElement('span');
+          indicator.dataset.emailTrackerMsg = '1';
+          indicator.style.cssText = 'display:inline-flex;align-items:center;margin-left:6px;flex-shrink:0;';
+          headerEl.appendChild(indicator);
+        }
+        indicator.dataset.emailTrackerMsgState = desiredState;
+        indicator.innerHTML = getCheckmarkSVG(status.opened);
       }
     }
   }
@@ -175,7 +263,10 @@
   let scanTimeout = null;
   function debouncedScan() {
     if (scanTimeout) clearTimeout(scanTimeout);
-    scanTimeout = setTimeout(scanAndInjectIndicators, 200);
+    scanTimeout = setTimeout(() => {
+      scanAndInjectIndicators();
+      scanConversationView();
+    }, 200);
   }
 
   // --- Observer ---

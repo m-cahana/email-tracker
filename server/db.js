@@ -94,7 +94,7 @@ function removeExcludedIp(ip) {
 
 function getEmailStatuses() {
   return db.prepare(`
-    SELECT e.id, e.subject, e.recipient,
+    SELECT e.id, e.subject, e.recipient, e.created_at,
       CASE WHEN COUNT(o.id) > 0 THEN 1 ELSE 0 END as opened
     FROM emails e
     LEFT JOIN opens o ON o.email_id = e.id
